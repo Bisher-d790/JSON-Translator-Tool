@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -12,6 +13,11 @@ public class FileManager : MonoBehaviour
     [SerializeField] private Text fileNamePrefix;
     [SerializeField] private Text statusMessageTextField;
     [SerializeField] private Text selectedFilesTextField;
+    [SerializeField] private float delayBetweenFiles = 0.1f;
+
+    [Header("Language Code")]
+    [SerializeField] private Text fromLanguageCode;
+    [SerializeField] private Text toLanguageCode;
 
     public void SelectInputFiles()
     {
@@ -33,7 +39,12 @@ public class FileManager : MonoBehaviour
         selectedFilesTextField.text = path;
     }
 
-    public void TranslateSelectedFiles()
+    public void StartTranslatingFiles()
+    {
+        StartCoroutine(TranslateSelectedFiles());
+    }
+
+    private IEnumerator TranslateSelectedFiles()
     {
         SetStatusMessage("", false);
         bool hasError = false;
@@ -44,100 +55,143 @@ public class FileManager : MonoBehaviour
 
             SetStatusMessage("No JSON files selected!", true, Color.red);
 
-            return;
+            yield return null;
         }
 
         outputFolderDirectory = EditorUtility.OpenFolderPanel("Select output folder", "", "");
 
         foreach (string file in inputFileDirectories)
         {
-            hasError = !TranslateFile(file);
+            bool isTranslating = false;
+
+            StartCoroutine(TranslateFile(file, () => isTranslating = false, (HasError) => hasError = HasError));
+
+            yield return new WaitWhile(() => isTranslating);
+
             if (hasError) break;
         }
 
         if (!hasError) SetStatusMessage("Finished Translation!", false, Color.green);
+        else SetStatusMessage("Finished with errors", true, Color.red);
     }
 
-    private bool TranslateFile(string path)
+    private IEnumerator TranslateFile(string path, Action OnDone, Action<bool> HasError)
     {
+        bool hasError = false;
+
         // Open the file
         string fileText = ReadFile(path);
 
-        if (fileText.Length <= 0) return false;
+        if (fileText.Length <= 0)
+        {
+            HasError(true);
+            OnDone();
+            hasError = true;
+            SetStatusMessage("File is empty!", true, Color.red);
+
+            yield return null;
+        };
 
         // Translate the content
-        try
+        int startSentanceIndex = 0;
+        bool isTranslating = false;
+        string sentanceToTranslate = "";
+        for (int i = 0; i < fileText.Length; i++)
         {
-            int startSentanceIndex = 0;
-            bool isTranslating = false;
-            string sentanceToTranslate = "";
-            for (int i = 0; i < fileText.Length; i++)
+            if (fileText[i] == '\"')
             {
-                if (fileText[i] == '\"')
+                if (!isTranslating)
                 {
-                    if (!isTranslating)
+                    for (int j = (i - 1); j > startSentanceIndex; j--)
                     {
-                        for (int j = (i - 1); j > startSentanceIndex; j--)
+                        if (fileText[j] == ' ') continue;
+                        else if (fileText[j] == ':')
                         {
-                            if (fileText[j] == ' ') continue;
-                            else if (fileText[j] == ':')
-                            {
-                                isTranslating = true;
-                                startSentanceIndex = i + 1;
-                                sentanceToTranslate = "";
-                                break;
-                            }
-                            else
-                            {
-                                break;
-                            }
+                            isTranslating = true;
+                            startSentanceIndex = i + 1;
+                            sentanceToTranslate = "";
+                            break;
                         }
-                    }
-                    else
-                    {
-                        isTranslating = false;
-
-                        // Translate the sentance
-                        if (sentanceToTranslate.Length > 0)
+                        else
                         {
-                            string translatedSentance = TranslateText(sentanceToTranslate);
-
-                            fileText = fileText.Substring(0, startSentanceIndex) + translatedSentance + fileText.Substring(i);
-
-                            startSentanceIndex = startSentanceIndex - sentanceToTranslate.Length - translatedSentance.Length;
-                            i -= sentanceToTranslate.Length - translatedSentance.Length;
+                            break;
                         }
                     }
                 }
                 else
                 {
-                    if (isTranslating)
+                    isTranslating = false;
+
+                    // Translate the sentance
+                    if (sentanceToTranslate.Length > 0)
                     {
-                        sentanceToTranslate += fileText[i] + "";
+                        string translatedSentance = "";
+
+                        bool hasDoneTranslation = false;
+
+                        StartCoroutine(TranslateText(sentanceToTranslate,
+                            () => hasDoneTranslation = true,
+                            (translatedText) => translatedSentance = translatedText,
+                            () =>
+                            {
+                                hasError = true;
+                                HasError(true);
+                                OnDone();
+                            }));
+
+                        yield return new WaitWhile(() => !hasDoneTranslation);
+
+                        if (hasError) break;
+
+                        fileText = fileText.Substring(0, startSentanceIndex) + translatedSentance + fileText.Substring(i);
+
+                        startSentanceIndex = startSentanceIndex - sentanceToTranslate.Length - translatedSentance.Length;
+                        i -= sentanceToTranslate.Length - translatedSentance.Length;
                     }
                 }
             }
+            else
+            {
+                if (isTranslating)
+                {
+                    sentanceToTranslate += fileText[i] + "";
+                }
+            }
+
+            yield return new WaitForSeconds(delayBetweenFiles);
         }
-        catch (Exception e)
-        {
-            Debug.Log("Translated File Text: " + fileText);
-            Debug.Log("Exception: " + e.Message);
-            SetStatusMessage(e.Message, true, Color.red);
-            return false;
-        }
+
+        if (hasError) yield return null;
 
         // Save the file
         string pathToSave = outputFolderDirectory + "/" + path.Split('/')[path.Split('/').Length - 1].Split('.')[0] + fileNamePrefix.text + ".json";
 
         if (!WriteFile(pathToSave, fileText, false))
-            return false;
+        {
+            hasError = true;
+            HasError(true);
+            OnDone();
 
-        return true;
+            yield return null;
+        }
+
+        OnDone();
     }
 
-    private string TranslateText(string text)
+    private IEnumerator TranslateText(string sentance, Action IsDone, Action<string> TranslatedText, Action OnError)
     {
-        return "x";
+        yield return TranslationManager.Process(fromLanguageCode.text, toLanguageCode.text, sentance,
+            (translatedText) =>
+            {
+                TranslatedText(translatedText);
+                IsDone();
+            },
+            (errors) =>
+            {
+                SetStatusMessage(errors, true, Color.red);
+                OnError();
+                IsDone();
+            });
     }
 
     private string ReadFile(string path)

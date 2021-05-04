@@ -4,5 +4,8 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/JSONTranslatorScene.unity
+    guid: 24a8e65b32cb14516b91e9eb91aa725f
   m_configObjects: {}
