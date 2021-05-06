@@ -50,9 +50,6 @@ public class TranslationManager : MonoBehaviour
                 // Dig through and take apart the text to get to the good stuff.
                 string translatedText = N[0][0][0];
 
-                // This is purely for debugging in the Editor to see if it's the word you wanted.
-                print(translatedText);
-
                 OnTranslated(translatedText);
             }
             else

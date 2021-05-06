@@ -13,7 +13,9 @@ public class FileManager : MonoBehaviour
     [SerializeField] private Text fileNamePrefix;
     [SerializeField] private Text statusMessageTextField;
     [SerializeField] private Text selectedFilesTextField;
+    [SerializeField] private Text DebugLogTextField;
     [SerializeField] private float delayBetweenFiles = 0.1f;
+    [SerializeField] private float delayBetweenTranslations = 0.1f;
 
     [Header("Language Code")]
     [SerializeField] private Text fromLanguageCode;
@@ -62,13 +64,15 @@ public class FileManager : MonoBehaviour
 
         foreach (string file in inputFileDirectories)
         {
-            bool isTranslating = false;
+            bool isTranslating = true;
 
             StartCoroutine(TranslateFile(file, () => isTranslating = false, (HasError) => hasError = HasError));
 
             yield return new WaitWhile(() => isTranslating);
 
             if (hasError) break;
+
+            yield return new WaitForSeconds(delayBetweenFiles);
         }
 
         if (!hasError) SetStatusMessage("Finished Translation!", false, Color.green);
@@ -84,98 +88,104 @@ public class FileManager : MonoBehaviour
 
         if (fileText.Length <= 0)
         {
-            HasError(true);
-            OnDone();
             hasError = true;
             SetStatusMessage("File is empty!", true, Color.red);
-
-            yield return null;
-        };
-
-        // Translate the content
-        int startSentanceIndex = 0;
-        bool isTranslating = false;
-        string sentanceToTranslate = "";
-        for (int i = 0; i < fileText.Length; i++)
+        }
+        else
         {
-            if (fileText[i] == '\"')
+            // Translate the content
+            int startSentanceIndex = 0;
+            bool isTranslating = false;
+            string sentanceToTranslate = "";
+
+            for (int i = 0; i < fileText.Length; i++)
             {
-                if (!isTranslating)
+                if (fileText[i] == '\"')
                 {
-                    for (int j = (i - 1); j > startSentanceIndex; j--)
+                    if (!isTranslating)
                     {
-                        if (fileText[j] == ' ') continue;
-                        else if (fileText[j] == ':')
+                        for (int j = (i - 1); j > startSentanceIndex; j--)
                         {
-                            isTranslating = true;
-                            startSentanceIndex = i + 1;
-                            sentanceToTranslate = "";
-                            break;
+                            if (fileText[j] == ' ') continue;
+                            else if (fileText[j] == ':')
+                            {
+                                isTranslating = true;
+                                startSentanceIndex = i + 1;
+                                sentanceToTranslate = "";
+                                break;
+                            }
+                            else
+                            {
+                                break;
+                            }
                         }
-                        else
+                    }
+                    else
+                    {
+                        isTranslating = false;
+
+                        // Translate the sentance
+                        if (sentanceToTranslate.Length > 0)
                         {
-                            break;
+                            string translatedSentance = "";
+
+                            bool hasDoneTranslation = false;
+
+                            StartCoroutine(TranslateText(sentanceToTranslate,
+                                () => hasDoneTranslation = true,
+                                (translatedText) => translatedSentance = translatedText,
+                                () =>
+                                {
+                                    hasError = true;
+                                }));
+
+                            yield return new WaitWhile(() => !hasDoneTranslation);
+
+                            if (hasError) break;
+
+                            PrintLog("Translated Sentance: " + translatedSentance);
+
+                            fileText = fileText.Substring(0, startSentanceIndex) + translatedSentance + fileText.Substring(i);
+
+                            startSentanceIndex = startSentanceIndex - sentanceToTranslate.Length - translatedSentance.Length;
+                            i -= sentanceToTranslate.Length - translatedSentance.Length;
+
+                            yield return new WaitForSeconds(delayBetweenTranslations);
                         }
                     }
                 }
                 else
                 {
-                    isTranslating = false;
-
-                    // Translate the sentance
-                    if (sentanceToTranslate.Length > 0)
+                    if (isTranslating)
                     {
-                        string translatedSentance = "";
-
-                        bool hasDoneTranslation = false;
-
-                        StartCoroutine(TranslateText(sentanceToTranslate,
-                            () => hasDoneTranslation = true,
-                            (translatedText) => translatedSentance = translatedText,
-                            () =>
-                            {
-                                hasError = true;
-                                HasError(true);
-                                OnDone();
-                            }));
-
-                        yield return new WaitWhile(() => !hasDoneTranslation);
-
-                        if (hasError) break;
-
-                        fileText = fileText.Substring(0, startSentanceIndex) + translatedSentance + fileText.Substring(i);
-
-                        startSentanceIndex = startSentanceIndex - sentanceToTranslate.Length - translatedSentance.Length;
-                        i -= sentanceToTranslate.Length - translatedSentance.Length;
+                        sentanceToTranslate += fileText[i] + "";
                     }
                 }
             }
-            else
-            {
-                if (isTranslating)
-                {
-                    sentanceToTranslate += fileText[i] + "";
-                }
-            }
-
-            yield return new WaitForSeconds(delayBetweenFiles);
         }
 
-        if (hasError) yield return null;
-
-        // Save the file
-        string pathToSave = outputFolderDirectory + "/" + path.Split('/')[path.Split('/').Length - 1].Split('.')[0] + fileNamePrefix.text + ".json";
-
-        if (!WriteFile(pathToSave, fileText, false))
+        if (!hasError)
         {
-            hasError = true;
+            // Save the file
+            string pathToSave = outputFolderDirectory + "/" + path.Split('/')[path.Split('/').Length - 1].Split('.')[0] + fileNamePrefix.text + ".json";
+
+            if (!WriteFile(pathToSave, fileText, false))
+            {
+                hasError = true;
+            }
+        }
+
+        if (!hasError)
+        {
+            HasError(false);
+            OnDone();
+        }
+        else
+        {
             HasError(true);
             OnDone();
-
-            yield return null;
         }
 
-        OnDone();
     }
 
     private IEnumerator TranslateText(string sentance, Action IsDone, Action<string> TranslatedText, Action OnError)
@@ -204,7 +214,7 @@ public class FileManager : MonoBehaviour
 
             reader.Close();
 
-            Debug.Log("Read Text: " + fileText);
+            PrintLog("Read Text: " + fileText);
 
             return fileText;
         }
@@ -225,7 +235,7 @@ public class FileManager : MonoBehaviour
             writer.WriteLine(content);
             writer.Close();
 
-            Debug.Log("written Text: " + content);
+            PrintLog("written Text: " + content);
         }
         catch (Exception e)
         {
@@ -244,5 +254,11 @@ public class FileManager : MonoBehaviour
             statusMessageTextField.text = message;
 
         statusMessageTextField.color = color;
+    }
+
+    public void PrintLog(string message)
+    {
+        Debug.Log(message);
+        DebugLogTextField.text = message;
     }
 }
