@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using SFB;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -23,22 +24,13 @@ public class FileManager : MonoBehaviour
 
     public void SelectInputFiles()
     {
-        string path = EditorUtility.OpenFilePanel("Select JSON file", "", "json");
+        //string path = EditorUtility.OpenFilePanel("Select JSON file", "", "json");
+        string[] files = StandaloneFileBrowser.OpenFilePanel("Select JSON file", "", "json", true);
 
-        inputFileDirectories.Add(path);
+        inputFileDirectories.AddRange(files);
 
-        selectedFilesTextField.text = path;
-    }
-
-    public void SelectInputFolder()
-    {
-        string path = EditorUtility.OpenFolderPanel("Select JSON folder", "", "");
-
-        DirectoryInfo directory = new DirectoryInfo(path);
-        FileInfo[] files = directory.GetFiles();
-        foreach (FileInfo file in files) inputFileDirectories.Add(file.FullName);
-
-        selectedFilesTextField.text = path;
+        if (files.Length > 0)
+            selectedFilesTextField.text = files.Length > 1 ? files.Length.ToString() + " files selected." : files[0];
     }
 
     public void StartTranslatingFiles()
@@ -60,19 +52,36 @@ public class FileManager : MonoBehaviour
             yield return null;
         }
 
-        outputFolderDirectory = EditorUtility.OpenFolderPanel("Select output folder", "", "");
-
-        foreach (string file in inputFileDirectories)
+        if (!hasError)
         {
-            bool isTranslating = true;
+            //outputFolderDirectory = EditorUtility.OpenFolderPanel("Select output folder", "", "");
+            string[] Directories = StandaloneFileBrowser.OpenFolderPanel("Select output folder", "", false);
+            if (Directories.Length > 0)
+                outputFolderDirectory = Directories[0];
+            else
+            {
+                hasError = true;
 
-            StartCoroutine(TranslateFile(file, () => isTranslating = false, (HasError) => hasError = HasError));
+                SetStatusMessage("No output directory selected!", true, Color.red);
 
-            yield return new WaitWhile(() => isTranslating);
+                yield return null;
+            }
+        }
 
-            if (hasError) break;
+        if (!hasError)
+        {
+            foreach (string file in inputFileDirectories)
+            {
+                bool isTranslating = true;
 
-            yield return new WaitForSeconds(delayBetweenFiles);
+                StartCoroutine(TranslateFile(file, () => isTranslating = false, (HasError) => hasError = HasError));
+
+                yield return new WaitWhile(() => isTranslating);
+
+                if (hasError) break;
+
+                yield return new WaitForSeconds(delayBetweenFiles);
+            }
         }
 
         if (!hasError) SetStatusMessage("Finished Translation!", false, Color.green);
