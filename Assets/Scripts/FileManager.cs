@@ -17,6 +17,7 @@ public class FileManager : MonoBehaviour
     [SerializeField] private Text DebugLogTextField;
     [SerializeField] private float delayBetweenFiles = 0.1f;
     [SerializeField] private float delayBetweenTranslations = 0.1f;
+    [SerializeField] private int requestCharacterLimit = 5000;
 
     [Header("Language Code")]
     [SerializeField] private Text fromLanguageCode;
@@ -88,6 +89,11 @@ public class FileManager : MonoBehaviour
         else SetStatusMessage("Finished with errors", true, Color.red);
     }
 
+    /*
+     * Need to satisfy two limitation with using Google Translate API free requests:
+     * 1- Limit 5k characters for each request
+     * 2- 100 requests per hour
+     */
     private IEnumerator TranslateFile(string path, Action OnDone, Action<bool> HasError)
     {
         bool hasError = false;
@@ -95,6 +101,8 @@ public class FileManager : MonoBehaviour
         // Open the file
         string fileText = ReadFile(path);
 
+        // Get the sentences to translated into a string
+        string translationRequestString = "";
         if (fileText.Length <= 0)
         {
             hasError = true;
@@ -107,6 +115,7 @@ public class FileManager : MonoBehaviour
             bool isTranslating = false;
             string sentanceToTranslate = "";
 
+            // Fill the translation request string with all the values from the JSON file
             for (int i = 0; i < fileText.Length; i++)
             {
                 if (fileText[i] == '\"')
@@ -133,33 +142,13 @@ public class FileManager : MonoBehaviour
                     {
                         isTranslating = false;
 
-                        // Translate the sentance
+                        // Add the sentance to translate to the translation request string
                         if (sentanceToTranslate.Length > 0)
                         {
-                            string translatedSentance = "";
 
-                            bool hasDoneTranslation = false;
-
-                            StartCoroutine(TranslateText(sentanceToTranslate,
-                                () => hasDoneTranslation = true,
-                                (translatedText) => translatedSentance = translatedText,
-                                () =>
-                                {
-                                    hasError = true;
-                                }));
-
-                            yield return new WaitWhile(() => !hasDoneTranslation);
-
-                            if (hasError) break;
-
-                            PrintLog("Translated Sentance: " + translatedSentance);
-
-                            fileText = fileText.Substring(0, startSentanceIndex) + translatedSentance + fileText.Substring(i);
-
-                            startSentanceIndex = startSentanceIndex - sentanceToTranslate.Length - translatedSentance.Length;
-                            i -= sentanceToTranslate.Length - translatedSentance.Length;
-
-                            yield return new WaitForSeconds(delayBetweenTranslations);
+                            if (!string.IsNullOrWhiteSpace(translationRequestString))
+                                translationRequestString += "\"";
+                            translationRequestString += sentanceToTranslate;
                         }
                     }
                 }
@@ -173,9 +162,133 @@ public class FileManager : MonoBehaviour
             }
         }
 
+        // Process the translation requests
+        // Split the full request to smaller less 5k chars parts
+        List<string> translationRequests = new List<string>();
+        translationRequests.Add(translationRequestString);
+
+        while (translationRequests[translationRequests.Count - 1].Length / requestCharacterLimit >= 1.0f)
+        {
+            string currentRequest = translationRequests[translationRequests.Count - 1];
+
+            // Get the index to split the string into two, and it should not be the middle of a sentence
+            int cutoffIndex = requestCharacterLimit - 1;
+            while (!currentRequest[cutoffIndex].Equals("\"")) cutoffIndex--;
+
+            string newRequest = currentRequest.Substring(cutoffIndex);
+            currentRequest = currentRequest.Substring(0, cutoffIndex);
+
+            translationRequests[translationRequests.Count - 1] = currentRequest;
+            translationRequests.Add(newRequest);
+        }
+
+        // process the small requests one by one, and gather them into a string
+        string fullTranslatedRequest = "";
+        foreach (string request in translationRequests)
+        {
+            string translatedString = "";
+
+            bool hasDoneTranslation = false;
+
+            Debug.Log("Request: " + request.Length + ": " + request);
+
+            StartCoroutine(TranslateText(
+                request,
+                () => hasDoneTranslation = true,
+                (translatedText) => translatedString = translatedText,
+                () =>
+                {
+                    hasError = true;
+                }));
+
+            yield return new WaitWhile(() => !hasDoneTranslation);
+
+            if (hasError) break;
+
+            PrintLog("Translated request: " + translatedString.Length + ": " + translatedString);
+            fullTranslatedRequest += translatedString;
+        }
+        PrintLog("fullTranslatedRequest: " + fullTranslatedRequest.Length + ": " + fullTranslatedRequest);
+
+        // Set the translated values as the values for the new JSON file
+        if (fullTranslatedRequest.Length <= 0)
+        {
+            hasError = true;
+            SetStatusMessage("Translated string is empty!", true, Color.red);
+        }
+        else
+        {
+            // Translate the content
+            int startSentanceIndex = 0;
+            bool isTranslating = false;
+            string sentanceToTranslate = "";
+
+            // variables for sentence replacement
+            string[] translatedSentences = fullTranslatedRequest.Split('\"');
+            int currentSentenceIndex = 0;
+
+            // Fill the translation request string with all the values from the JSON file
+            for (int i = 0; i < fileText.Length; i++)
+            {
+                if (fileText[i] == '\"')
+                {
+                    if (!isTranslating)
+                    {
+                        for (int j = (i - 1); j > startSentanceIndex; j--)
+                        {
+                            if (fileText[j] == ' ') continue;
+                            else if (fileText[j] == ':')
+                            {
+                                isTranslating = true;
+                                startSentanceIndex = i + 1;
+                                sentanceToTranslate = "";
+                                break;
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        isTranslating = false;
+
+                        // Replace the currect sentences with the translated sentences
+                        if (sentanceToTranslate.Length > 0)
+                        {
+                            if (currentSentenceIndex >= translatedSentences.Length)
+                            {
+                                hasError = true;
+                                break;
+                            }
+
+                            string translatedSentance = translatedSentences[currentSentenceIndex];
+
+                            fileText = fileText.Substring(0, startSentanceIndex) + translatedSentance + fileText.Substring(i);
+
+                            startSentanceIndex = startSentanceIndex - sentanceToTranslate.Length - translatedSentance.Length;
+                            i -= sentanceToTranslate.Length - translatedSentance.Length;
+
+                            yield return new WaitForSeconds(delayBetweenTranslations);
+
+                            currentSentenceIndex++;
+                        }
+                    }
+                }
+                else
+                {
+                    if (isTranslating)
+                    {
+                        sentanceToTranslate += fileText[i] + "";
+                    }
+                }
+            }
+        }
+
+        // Save the file
         if (!hasError)
         {
-            // Save the file
             string pathToSave = outputFolderDirectory + "/" + path.Split('/')[path.Split('/').Length - 1].Split('.')[0] + fileNamePrefix.text + ".json";
 
             if (!WriteFile(pathToSave, fileText, false))
