@@ -17,6 +17,7 @@ public class FileManager : MonoBehaviour
     [SerializeField] private Text DebugLogTextField;
     [SerializeField] private float delayBetweenFiles = 0.1f;
     [SerializeField] private float delayBetweenTranslations = 0.1f;
+    [SerializeField] private bool saveTranslationValuesLocally = true;
 
     [Header("Language Code")]
     [SerializeField] private Text fromLanguageCode;
@@ -199,7 +200,7 @@ public class FileManager : MonoBehaviour
 
     private IEnumerator TranslateText(string sentance, Action IsDone, Action<string> TranslatedText, Action OnError)
     {
-        yield return TranslationManager.Process(fromLanguageCode.text, toLanguageCode.text, sentance,
+        yield return TranslationManager.Process(fromLanguageCode.text, toLanguageCode.text, sentance, saveTranslationValuesLocally,
             (translatedText) =>
             {
                 TranslatedText(translatedText);
