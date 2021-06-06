@@ -17,7 +17,7 @@ public class FileManager : MonoBehaviour
     [SerializeField] private Text DebugLogTextField;
     [SerializeField] private float delayBetweenFiles = 0.1f;
     [SerializeField] private float delayBetweenTranslations = 0.1f;
-    [SerializeField] private int requestCharacterLimit = 5000;
+    [SerializeField] private int requestWordLimit = 45;
 
     [Header("Language Code")]
     [SerializeField] private Text fromLanguageCode;
@@ -163,17 +163,33 @@ public class FileManager : MonoBehaviour
         }
 
         // Process the translation requests
-        // Split the full request to smaller less 5k chars parts
+        // Split the full request to smaller less 45 words chars parts
         List<string> translationRequests = new List<string>();
         translationRequests.Add(translationRequestString);
 
-        while (translationRequests[translationRequests.Count - 1].Length / requestCharacterLimit >= 1.0f)
+        PrintLog("Full translation request string: "
+            + "\nsentences: " + translationRequestString.Split('\"').Length
+            + "\nwords: " + translationRequestString.Split(' ').Length
+            + "\n\n" + translationRequestString);
+
+        while (translationRequests[translationRequests.Count - 1].Split(' ').Length / requestWordLimit >= 1.0f)
         {
             string currentRequest = translationRequests[translationRequests.Count - 1];
 
-            // Get the index to split the string into two, and it should not be the middle of a sentence
-            int cutoffIndex = requestCharacterLimit - 1;
-            while (!currentRequest[cutoffIndex].Equals("\"")) cutoffIndex--;
+            // Get the index to split the string into two
+            int cutoffIndex = 0;
+            int words = 0;
+            for (cutoffIndex = 0; cutoffIndex < currentRequest.Length; cutoffIndex++)
+            {
+                if (currentRequest[cutoffIndex].Equals(' '))
+                {
+                    words++;
+                    if (words == requestWordLimit - 1) break;
+                }
+            }
+            //it shouldn't be the middle of a sentence
+            while (!currentRequest[cutoffIndex].Equals('\"'))
+                cutoffIndex--;
 
             string newRequest = currentRequest.Substring(cutoffIndex);
             currentRequest = currentRequest.Substring(0, cutoffIndex);
@@ -190,7 +206,10 @@ public class FileManager : MonoBehaviour
 
             bool hasDoneTranslation = false;
 
-            Debug.Log("Request: " + request.Length + ": " + request);
+            PrintLog("Request: "
+                + "\nsentences: " + request.Split('\"').Length
+                + "\nwords: " + request.Split(' ').Length
+                + "\n\n" + request);
 
             StartCoroutine(TranslateText(
                 request,
@@ -205,10 +224,18 @@ public class FileManager : MonoBehaviour
 
             if (hasError) break;
 
-            PrintLog("Translated request: " + translatedString.Length + ": " + translatedString);
+            PrintLog("Translated request: "
+                + "\nsentences: " + translatedString.Split('\"').Length
+                + "\nwords: " + translatedString.Split(' ').Length
+                + "\n\n" + translatedString);
+
             fullTranslatedRequest += translatedString;
         }
-        PrintLog("fullTranslatedRequest: " + fullTranslatedRequest.Length + ": " + fullTranslatedRequest);
+
+        PrintLog("Full Translated Request: "
+            + "\nsentences: " + fullTranslatedRequest.Split('\"').Length
+            + "\nwords: " + fullTranslatedRequest.Split(' ').Length
+            + "\n\n" + fullTranslatedRequest);
 
         // Set the translated values as the values for the new JSON file
         if (fullTranslatedRequest.Length <= 0)
@@ -260,6 +287,7 @@ public class FileManager : MonoBehaviour
                             if (currentSentenceIndex >= translatedSentences.Length)
                             {
                                 hasError = true;
+                                SetStatusMessage("Translated text is less than the input file. Index out of range!", true, Color.red);
                                 break;
                             }
 
@@ -307,7 +335,6 @@ public class FileManager : MonoBehaviour
             HasError(true);
             OnDone();
         }
-
     }
 
     private IEnumerator TranslateText(string sentance, Action IsDone, Action<string> TranslatedText, Action OnError)
