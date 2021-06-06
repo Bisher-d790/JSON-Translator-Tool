@@ -14,6 +14,7 @@ public class FileManager : MonoBehaviour
     [SerializeField] private Text fileNamePrefix;
     [SerializeField] private Text statusMessageTextField;
     [SerializeField] private Text selectedFilesTextField;
+    [SerializeField] private Text availableRequestsTextField;
     [SerializeField] private Text DebugLogTextField;
     [SerializeField] private float delayBetweenFiles = 0.1f;
     [SerializeField] private float delayBetweenTranslations = 0.1f;
@@ -22,6 +23,11 @@ public class FileManager : MonoBehaviour
     [Header("Language Code")]
     [SerializeField] private Text fromLanguageCode;
     [SerializeField] private Text toLanguageCode;
+
+    private void Start()
+    {
+        CheckAvailableRequests();
+    }
 
     public void SelectInputFiles()
     {
@@ -174,6 +180,8 @@ public class FileManager : MonoBehaviour
             }
         }
 
+        CheckAvailableRequests();
+
         if (!hasError)
         {
             // Save the file
@@ -254,6 +262,32 @@ public class FileManager : MonoBehaviour
         }
 
         return true;
+    }
+
+    public void CheckAvailableRequests()
+    {
+        string currentLog = PlayerPrefs.GetString(TranslationManager.REQUESTS_LOG_KEY);
+        string newLog = "";
+        List<DateTime> dates = new List<DateTime>();
+
+        foreach (string dateString in currentLog.Split('\n'))
+        {
+            if (string.IsNullOrWhiteSpace(dateString))
+                continue;
+
+            DateTime date = DateTime.Parse(dateString);
+
+            // Check if the request has been made with in the last hour
+            if (date.CompareTo(DateTime.UtcNow.AddHours(-1)) > 0)
+            {
+                dates.Add(date);
+                newLog += "\n" + dateString;
+            }
+        }
+
+        PlayerPrefs.SetString(TranslationManager.REQUESTS_LOG_KEY, newLog);
+
+        availableRequestsTextField.text = (100 - dates.Count) < 0 ? "0" : (100 - dates.Count).ToString();
     }
 
     private void SetStatusMessage(string message, bool append, Color color = new Color())

@@ -8,6 +8,8 @@ using UnityEngine.Networking;
 
 public class TranslationManager : MonoBehaviour
 {
+    public const string REQUESTS_LOG_KEY = "REQUESTS_LOG";
+
     [Header("Only for testing")]
     [SerializeField] private Text testToTranslateTextField;
     [SerializeField] private Text testTranslatedTextField;
@@ -65,6 +67,9 @@ public class TranslationManager : MonoBehaviour
                         PlayerPrefs.SetString(sourceText + "_" + targetLang, translatedText);
                         PlayerPrefs.Save();
                     }
+
+                    // Save the request date
+                    PlayerPrefs.SetString(REQUESTS_LOG_KEY, PlayerPrefs.GetString(REQUESTS_LOG_KEY) + "\n" + DateTime.UtcNow.ToString());
 
                     OnTranslated(translatedText);
                 }
