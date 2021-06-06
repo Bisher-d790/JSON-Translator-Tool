@@ -156,7 +156,6 @@ MonoBehaviour:
   DebugLogTextField: {fileID: 1809059994}
   delayBetweenFiles: 3
   delayBetweenTranslations: 0.05
-  requestWordLimit: 45
   fromLanguageCode: {fileID: 61809619}
   toLanguageCode: {fileID: 612254463}
 --- !u!4 &6609280
