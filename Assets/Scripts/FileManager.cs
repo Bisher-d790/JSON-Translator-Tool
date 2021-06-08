@@ -15,6 +15,7 @@ public class FileManager : MonoBehaviour
     [SerializeField] private Text statusMessageTextField;
     [SerializeField] private Text selectedFilesTextField;
     [SerializeField] private Text availableRequestsTextField;
+    [SerializeField] private Text TimeOfLastRequestTextField;
     [SerializeField] private Text DebugLogTextField;
     [SerializeField] private float delayBetweenFiles = 0.1f;
     [SerializeField] private float delayBetweenTranslations = 0.1f;
@@ -218,6 +219,12 @@ public class FileManager : MonoBehaviour
             },
             (errors) =>
             {
+                if (errors.Contains("429"))
+                {
+                    errors += "\nOnly 100 requests per hour\n";
+                    CheckAvailableRequests();
+                }
+
                 SetStatusMessage(errors, true, Color.red);
                 OnError();
                 IsDone();
@@ -290,6 +297,9 @@ public class FileManager : MonoBehaviour
         PlayerPrefs.SetString(TranslationManager.REQUESTS_LOG_KEY, newLog);
 
         availableRequestsTextField.text = (100 - dates.Count) < 0 ? "0" : (100 - dates.Count).ToString();
+
+        // Set time of last request within the hour
+        TimeOfLastRequestTextField.text = (dates.Count > 0) ? dates[dates.Count - 1].ToString() : "No request within the last hour";
     }
 
     private void SetStatusMessage(string message, bool append, Color color = new Color())
