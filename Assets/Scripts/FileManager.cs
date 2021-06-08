@@ -43,6 +43,8 @@ public class FileManager : MonoBehaviour
     public void StartTranslatingFiles()
     {
         StartCoroutine(TranslateSelectedFiles());
+
+        CheckAvailableRequests();
     }
 
     private IEnumerator TranslateSelectedFiles()
