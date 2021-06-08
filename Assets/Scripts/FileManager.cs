@@ -299,7 +299,7 @@ public class FileManager : MonoBehaviour
         availableRequestsTextField.text = (100 - dates.Count) < 0 ? "0" : (100 - dates.Count).ToString();
 
         // Set time of last request within the hour
-        TimeOfLastRequestTextField.text = (dates.Count > 0) ? dates[dates.Count - 1].ToString() : "No request within the last hour";
+        TimeOfLastRequestTextField.text = (dates.Count > 0) ? dates[dates.Count - 1].ToLocalTime().ToString() : "No request within the last hour";
     }
 
     private void SetStatusMessage(string message, bool append, Color color = new Color())
